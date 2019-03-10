@@ -1,0 +1,105 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(here)
+
+files <- list.files(path = here(), pattern = '.csv', full.names = T) %>%
+  map(read_csv, skip = 1)
+
+
+map_df(~read_csv, list.files(pattern = "*.csv"))
+read_csv
+tbl <-
+    list.files(pattern = "*.csv") %>% 
+    map_df(~read_csv(.))
+```
+
+```{r}
+wellbeing_toronto_demographics <- read_csv("wellbeing-toronto-demographics.csv")
+wellbeing_toronto_economy <- read_csv("wellbeing-toronto-economy.csv") %>% rename(neighbourhood_id = neighbourhood_id_fixed)
+wellbeing_toronto_environment <- read_csv("wellbeing-toronto-environment.csv") %>% rename(neighbourhood_id = neighbourhood_id_new)
+wellbeing_toronto_health<- read_csv("wellbeing-toronto-health.csv")
+wellbeing_toronto_population <- read_csv("wellbeing-toronto-population.csv")
+
+
+wellbeing_toronto <- wellbeing_toronto_demographics %>%
+  inner_join(wellbeing_toronto_economy, by = "neighbourhood_id") %>%
+  inner_join(wellbeing_toronto_environment, by = "neighbourhood_id") %>%
+  inner_join(wellbeing_toronto_health, by = "neighbourhood_id") %>%
+  inner_join(wellbeing_toronto_population, by = "neighbourhood_id") 
+
+
+drop.cols <- str_subset(names(wellbeing_toronto),"^neighbourhood[.]")
+
+wellbeing_toronto <- wellbeing_toronto %>%
+select(-one_of(drop.cols))
+
+```
+
+
+```{r}
+# populations aren't correct
+wellbeing_toronto %>%
+  mutate(male_percent = pop_males / total_population,
+         female_percent = pop_females / total_population) %>%
+  select(neighbourhood, total_population, pop_males, male_percent ,pop_females, female_percent) %>%
+  arrange(-male_percent)
+
+# finding the biggest offenders
+wellbeing_toronto %>%
+  mutate(accurate_pop = ifelse((pop_males + pop_females) == total_population, ((pop_males + pop_females) - total_population), ((pop_males + pop_females) - total_population))) %>%
+  select(neighbourhood, accurate_pop) %>%
+  arrange(-accurate_pop)
+
+# something is up with Woburn and Danforth, but especially Danforth
+wellbeing_toronto %>%
+  select(neighbourhood, total_population, total_area, pop_males,pop_females) %>%
+  filter(neighbourhood %in% c("Woburn", "Danforth"))
+```
+
+```{r}
+# languages by percent of population - should be good for using ads in another language (Markham use Chinese)
+wellbeing_toronto %>%
+  select(neighbourhood, total_population, str_subset(names(wellbeing_toronto), "language")) %>%
+  mutate_at(str_subset(names(wellbeing_toronto), "language"), function(x){
+x/wellbeing_toronto$total_population
+}) %>%
+  select(-home_language_category) %>%
+  gather(language, percent_of_population, -neighbourhood, -total_population) %>%
+  group_by(language) %>%
+  arrange(desc(percent_of_population)) %>%
+  slice(1:5) %>%
+  ungroup() %>%
+  mutate(neighbourhood = fct_reorder(neighbourhood, percent_of_population, .desc = T)) %>%
+  ggplot(aes(neighbourhood, percent_of_population, fill = language)) +
+  geom_col() +
+  facet_wrap(~language,scales = "free_x") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  theme_minimal() +
+  expand_limits(y=.5) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(angle = 15, size = 6)) +
+  labs(x="Neighbourhood",
+       title="Language Popularity by Neighbourhood")
+```
+
+```{r}
+# neighbourhoods with adolescent, teenage, and young adult, maybe another grouping var for neighbourhoods based on postal code?
+wellbeing_toronto %>%
+  select(neighbourhood, pop_0_4_years, total_population) %>%
+  mutate(percent_youth = (pop_0_4_years / total_population)) %>%
+  arrange(desc(percent_youth)) 
+```
+
+```{r}
+
+```
+

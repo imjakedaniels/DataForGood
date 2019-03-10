@@ -1,0 +1,93 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+# SINGLE DONOR WHO WANTS LOCATION
+library(tidyverse)
+library(plotly)
+library(mapproj)
+library(maps)
+library(ggmap)
+
+key <- "AIzaSyBo1EJl6U3-emaSvzN3qalWqPyTeTrgiJ0"
+
+df <- data.frame(lat = 43.664273,
+                 lon = -79.382776,
+                 Name = "Catholic Children's Aid Society of Toronto",
+                 Address = "26 Maitland St Toronto, ON M4Y 1C6",
+                 Website = "www.torontoccas.org",
+                 phone = "416-395-1500",
+                 email = "communications@torontoccas.org")
+
+#Set your API Key
+ggmap::register_google(key = "AIzaSyBo1EJl6U3-emaSvzN3qalWqPyTeTrgiJ0")
+
+p <- ggmap(get_googlemap(center = c(lon = -79.382776, lat = 43.664273),
+                    zoom = 18, scale = 2,
+                    maptype ='terrain',
+                    color = 'color'))
+static_plot <- p + geom_point(data = df, aes(x = lon, y = lat, text = paste(Address,"\n", Website,"\n", phone,"\n", email)), shape = 25, colour = "blue", alpha = 0.6, size = 15) + 
+    theme_void() +
+  labs(title = "Scroll Over For Info",
+       subtitle = "Weekdays: 9-5, Saturday: 10-4, Sunday: Closed") +
+  theme(title = element_text(size = 15, face = "bold.italic", colour = "blue"))
+
+interactive_plot <- plotly::ggplotly(
+  static_plot, tooltip="text")
+
+interactive_plot$sizingPolicy$padding <- "0"
+htmlwidgets::saveWidget(
+  interactive_plot, "index.html", libdir = "lib",
+  title = "Donor Map",
+  selfcontained = FALSE
+)
+
+```
+
+```{r}
+df <- wellbeing_toronto_youth_services %>%
+  select(agencyname, address, website, email, officephone, neighbourhood, hours) %>%
+  head(9) %>%
+  mutate(lat = c(43.664273, 43.667898, NA, 43.656453, 43.764144, 43.657286, 43.646162, 43.661342, 43.665622),
+         lon = c(-79.382776, -79.384519, NA, -79.364460, -79.441756, -79.386804, -79.388935, -79.384558, -79.380616)) %>%
+  drop_na(lat)
+
+#Set your API Key
+ggmap::register_google(key = "AIzaSyBo1EJl6U3-emaSvzN3qalWqPyTeTrgiJ0")
+
+p <- ggmap(get_googlemap(clickableIcons = F, center = c(lon = sum(df$lon)/length(df$lon), lat = sum(df$lat)/length(df$lat)),
+                    zoom = 11, scale = 2,
+                    maptype ='roadmap',
+                    color = 'color'))
+
+static_plot <- p + geom_point(data = df, aes(x = lon, y = lat, text = paste(agencyname,"\n", address,"\n", website, "\n", officephone,"\n", email), colour = neighbourhood), alpha = 0.6, size = 3) + 
+    theme_void() +
+  labs(title = "Scroll Over To Find \nYouth Services Near You") +
+  theme(title = element_text(size = 15, face = "bold.italic", hjust = 0.5, colour = "#4E79A7"),
+        legend.title = element_blank()) +
+  scale_colour_manual(values = c("#4E79A7","#E15759", "#F28E2B", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7"))
+
+interactive_plot <- plotly::ggplotly(
+  static_plot, tooltip="text") %>%
+  style(hoverlabel = list(fillcolor = "white"), hoveron = "text")
+
+interactive_plot$sizingPolicy$padding <- "0"
+htmlwidgets::saveWidget(
+  interactive_plot, "index.html", libdir = "lib",
+  title = "Donor Map",
+  selfcontained = FALSE
+)
+
+```
+
+
+
+
+
+

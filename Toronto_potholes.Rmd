@@ -1,0 +1,107 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(tidyverse)
+library(rvest)
+
+#import data
+scrape <- read_html("https://www.toronto.ca/services-payments/streets-parking-transportation/road-maintenance/potholes/") %>%
+  html_nodes('table') %>%
+  html_table()
+
+
+early_year <- scrape[[1]] %>%
+  gather(year) %>%
+  mutate(value = as.numeric(str_remove(value, ",")),
+         year = as.numeric(year))
+```
+
+
+```{r}
+library(extrafont)
+#font_import()
+loadfonts(device = "win")
+
+library(magick)
+library(here) # For making the script run without a wd
+
+#make my plot
+early_year %>% 
+  ggplot(aes(x=year, y=value)) +
+  geom_line(linetype = 2) +
+  geom_point(size = 3, colour = "#029BDD") +
+  expand_limits(y=0:100000) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  labs(y="# of Potholes Filled",
+       x="Year",
+       title = "Fixing Toronto's Potholes",
+       subtitle = "Potholes filled for the period of January 1 – March 3",
+       caption = "*Data from 311 Toronto - Road Maintenance") +
+  ggthemes::theme_economist() +
+  theme(plot.background = element_rect(fill = "#f0f0ed"),
+        text = element_text(family="Ubuntu"),
+        plot.caption = element_text(colour = "#666666"),
+        plot.subtitle = element_text(colour = "#666666"),
+        plot.title = element_text(size = 20))  +
+   ggsave(filename = paste0(here("/"), last_plot()$labels$title, ".png"),
+         width = 6, height = 4, dpi = 320)
+
+# Call back the plot and logo
+plot <- image_read(paste0(here("/"), last_plot()$labels$title, ".png"))
+logo_raw <- image_read("https://toronto.dataforgood.ca/wp-content/uploads/sites/2/2018/05/dfg-toronto-40.png")
+
+# Scale logo and give it a border and annotation
+logo <- logo_raw %>%
+  image_scale("500") %>% 
+  image_background("#FFFFFF", flatten = TRUE) %>%
+  image_border("#FFFFFF", "600x10")
+
+# Stack them on top of each other
+final_plot <- image_append(image_scale(c(plot, logo), "500"), stack = TRUE)
+image_write(final_plot, paste0(here("/"), last_plot()$labels$title, ".png"))
+```
+
+```{r}
+# bar charts
+early_year %>%
+  ggplot(aes(x=year, y=value)) +
+  geom_col(fill = "#029BDD") +
+  expand_limits(y=0:100000) +
+  scale_y_continuous(labels = scales::comma_format()) +
+  scale_x_continuous(labels = 2014:2019, breaks = 2014:2019) +
+  labs(y="# of Potholes Filled",
+       x="Year",
+       title = "Fixing Toronto's Potholes",
+       subtitle = "Potholes filled for the period of January 1 – March 3",
+       caption = "*Data from 311 Toronto - Road Maintenance") +
+  ggthemes::theme_economist() +
+  theme(plot.background = element_rect(fill = "#f0f0ed"),
+        text = element_text(family="Ubuntu"),
+        plot.caption = element_text(colour = "#666666"),
+        plot.subtitle = element_text(colour = "#666666", hjust = 0.33),
+        plot.title = element_text(size = 20, hjust = 0.32)) +
+   ggsave(filename = paste0(here("/"), last_plot()$labels$title, ".png"),
+         width = 6, height = 4, dpi = 320)
+
+# Call back the plot and logo
+plot <- image_read(paste0(here("/"), last_plot()$labels$title, ".png"))
+logo_raw <- image_read("https://toronto.dataforgood.ca/wp-content/uploads/sites/2/2018/05/dfg-toronto-40.png")
+
+# Scale logo and give it a border and annotation
+logo <- logo_raw %>%
+  image_scale("500") %>% 
+  image_background("#FFFFFF", flatten = TRUE) %>%
+  image_border("#FFFFFF", "600x10")
+
+# Stack them on top of each other
+final_plot <- image_append(image_scale(c(plot, logo), "500"), stack = TRUE)
+image_write(final_plot, paste0(here("/"), last_plot()$labels$title, ".png"))
+```
+

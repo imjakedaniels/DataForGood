@@ -1,30 +1,33 @@
 ---
 title: "R Notebook"
-output: html_notebook
+output:
+  html_document:
+    df_print: paged
 ---
 
 This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
 
 Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
 
-```{r}
+```{r, message=FALSE, warning = FALSE, error=FALSE}
 library(tidyverse)
+# loading in
 A_Greener_Future_Data_2017 <- read_csv("AGFDATA - 2017 - A Greener Future Data 20.csv")
 A_Greener_Future_Data_2018 <- read_csv("AGFDATA - 2018 - A Greener Future Data 20.csv")
 
+# fixing column names
 names(A_Greener_Future_Data_2017) <- A_Greener_Future_Data_2017[1,]
 A_Greener_Future_Data_2017 <-A_Greener_Future_Data_2017[-1,]
 
 names(A_Greener_Future_Data_2018) <- A_Greener_Future_Data_2018[1,]
 A_Greener_Future_Data_2018 <-A_Greener_Future_Data_2018[-1,]
 
+# binding
 AGF_2017_18 <- rbind(A_Greener_Future_Data_2017,A_Greener_Future_Data_2018)
-```
 
-```{r}
 library(lubridate)
 library(janitor)
-
+# converting column types into numeric, fixing names into snake_case, and parsing the date
 AGF_2017_18 <- AGF_2017_18 %>%
   mutate_at(names(AGF_2017_18[,15:44]), as.numeric) %>%
   clean_names() %>%
@@ -38,6 +41,7 @@ AGF_2017_18 <- AGF_2017_18 %>%
 
 Weekdays for cig butts
 ```{r}
+# these could use groupings (ie. plastic, metal)
 AGF_2017_18 %>%
   mutate(weekday = wday(date)) %>%
   group_by(weekday) %>%
@@ -69,8 +73,6 @@ AGF_2017_18 %>%
   gather(item, value, -weekday, -total) %>%
   filter(item != "cigarette_butts") %>%
 
-# picked up 473,689 cigarette butts on Saturday
-  
 ggplot(aes(x=weekday, y=value, fill = item, group = weekday)) +
   geom_col() +
   scale_y_continuous(labels = scales::comma_format())
@@ -88,7 +90,7 @@ AGF_2017_18 %>%
     geom_line() +
     scale_y_continuous(labels = scales::comma_format()) 
 
-# with cigarete butts
+# with cigarete butts (what an event they have eh)
 AGF_2017_18 %>%
   filter(date >= "2018-05-01" & date <= "2018-09-01") %>%
   arrange(date) %>%
@@ -96,7 +98,6 @@ AGF_2017_18 %>%
     ggplot(aes(x=date, y=cumulative, frame = date)) +
     geom_line() +
     scale_y_continuous(labels = scales::comma_format()) 
-
 ```
 
 Average metrics
@@ -105,18 +106,17 @@ saturdays <- AGF_2017_18 %>%
   mutate(weekday = wday(date),
          saturday = weekday == 7) %>%
   filter(saturday == T) 
-# 512,153 pieces of trash on Saturday
 
 
-# avreage amount collected on saturdays over last 2 years
+# avreage amount collected on saturdays over last 2 years ~5000
   saturdays %>%
     summarize(weekly_average = sum(total)/104)
-# ~5000
+
   
-# average amount collected daily over last 2 years
+# average amount collected daily over last 2 years ~900 pieces a day
   AGF_2017_18 %>%
     summarize(daily_avg = sum(total)/(365*2))
-# 889 pieces a day
+
 ```
 
 Event Data of Ontario
@@ -126,35 +126,105 @@ AGF_2017_18 %>%
   group_by(event) %>%
   summarize(total = sum(as.numeric(volunteers))) %>%
   arrange(-total)
-# Love Your Lake	749			
-# The Butt Blitz	386
 
-# number of volunteers by province
+# Love Your Lake by city
+AGF_2017_18 %>%
+  filter(event == "Love Your Lake") %>%
+  group_by(city) %>%
+  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
+            tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
+            lighters = sum(as.numeric(lighters), na.rm = T),
+            paper_bags = sum(as.numeric(paper_bags), na.rm = T),
+            reusable_bags = sum(as.numeric(reusable_bags), na.rm = T),
+            food_wrappers = sum(as.numeric(food_wrappers), na.rm = T),
+            plastic_beverage_bottles = sum(as.numeric(plastic_beverage_bottles), na.rm = T),
+            plastic_bottle_caps = sum(as.numeric(plastic_bottle_caps), na.rm = T),
+            metal_bottle_caps = sum(as.numeric(metal_bottle_caps), na.rm = T),
+            cans = sum(as.numeric(cans), na.rm = T),
+            glass_bottles = sum(as.numeric(glass_bottles), na.rm = T),
+            straws = sum(as.numeric(straws), na.rm = T),
+            utensils = sum(as.numeric(utensils), na.rm = T),
+            personal_hygiene = sum(as.numeric(personal_hygiene), na.rm = T),
+            clothing = sum(as.numeric(clothing), na.rm = T),
+            construction = sum(as.numeric(construction), na.rm = T),
+            fishing = sum(as.numeric(fishing), na.rm = T),
+            plastic_pieces = sum(as.numeric(plastic_pieces), na.rm = T),
+            paper = sum(as.numeric(paper), na.rm = T),
+            glass = sum(as.numeric(glass), na.rm = T),
+            foam = sum(as.numeric(foam), na.rm = T),
+            other = sum(as.numeric(other), na.rm = T),
+            syringes = sum(as.numeric(syringes), na.rm = T),
+            total = sum(as.numeric(total), na.rm = T))
+
+# Butt blitz by city
+AGF_2017_18 %>%
+  filter(event == "The Butt Blitz") %>%
+  group_by(city) %>%
+  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T))
+```
+Provinces (Ontario)
+```{r}
+# number of volunteers by province - over 1000 volunteers from ontario
 AGF_2017_18 %>%
   group_by(province) %>%
   summarize(total = sum(as.numeric(volunteers))) %>%
   arrange(-total)
-# over 1000 volunteers from ontario
 
-## Ontario
+# number of trash picked up by province
+AGF_2017_18 %>%
+  group_by(province) %>%
+  filter(!province %in% c("New Providence", "New York", NA)) %>%
+  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T)) %>%
+  arrange(-cigarette_butts)
+
+## Cities in Ontario - 40 cities 
 AGF_2017_18 %>%
   filter(province == "Ontario") %>%
   count(city)
-# 40 cities - wordcloud
 
+# 99 days over last 2 years
 AGF_2017_18 %>%
   filter(province == "Ontario") %>%
   count(date) %>%
   count(date) %>%
   summarize(total_days = sum(nn))
-# 99 days
 
+# number of volunteers by city
 AGF_2017_18 %>%
   filter(province == "Ontario") %>%
   group_by(city) %>%
   summarize(volunteers = sum(volunteers)) %>%
   arrange(-volunteers)
-# number of volunteers
+```
+wordclouds by Ontario & Canada-wide
+```{r}
+library(wordcloud2)
+
+# based on number of events
+AGF_2017_18 %>%
+  filter(province == "Ontario") %>%
+  count(city) %>%
+wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+
+# based on number of volunteers
+AGF_2017_18 %>%
+  filter(province == "Ontario") %>%
+  group_by(city) %>%
+  summarize(volunteers = sum(volunteers)) %>%
+wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+
+# based on total trash picked up
+AGF_2017_18 %>%
+  filter(province == "Ontario") %>%
+  group_by(city) %>%
+  summarize(total = sum(total)) %>%
+wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+
+# across canada total trash
+AGF_2017_18 %>%
+  group_by(city) %>%
+  summarize(total = sum(total)) %>%
+wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
 ```
 
 ```{r}
@@ -184,113 +254,39 @@ AGF_2017_18 %>%
             foam = sum(as.numeric(foam), na.rm = T),
             other = sum(as.numeric(other), na.rm = T),
             syringes = sum(as.numeric(syringes), na.rm = T),
-            total = sum(as.numeric(total), na.rm = T))%>%
+            total = sum(as.numeric(total), na.rm = T)) %>%
   arrange(-total)
 
-library(wordcloud2)
-# based on number of events
+# by events
 AGF_2017_18 %>%
-  filter(province == "Ontario") %>%
-  count(city) %>%
-wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
-
-# based on number of volunteers
-AGF_2017_18 %>%
-  filter(province == "Ontario") %>%
-  group_by(city) %>%
-  summarize(volunteers = sum(volunteers)) %>%
-wordcloud2(size = 0.5,fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
-
-# based on total trash picked up
-AGF_2017_18 %>%
-  filter(province == "Ontario") %>%
-  group_by(city) %>%
-  summarize(total = sum(total)) %>%
-wordcloud2(size = 0.5,fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
-
-# across canada total trash
-AGF_2017_18 %>%
-  group_by(city) %>%
-  summarize(total = sum(total)) %>%
-wordcloud2(size = 0.5,fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+  group_by(event) %>%
+  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
+            tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
+            lighters = sum(as.numeric(lighters), na.rm = T),
+            paper_bags = sum(as.numeric(paper_bags), na.rm = T),
+            reusable_bags = sum(as.numeric(reusable_bags), na.rm = T),
+            food_wrappers = sum(as.numeric(food_wrappers), na.rm = T),
+            plastic_beverage_bottles = sum(as.numeric(plastic_beverage_bottles), na.rm = T),
+            plastic_bottle_caps = sum(as.numeric(plastic_bottle_caps), na.rm = T),
+            metal_bottle_caps = sum(as.numeric(metal_bottle_caps), na.rm = T),
+            cans = sum(as.numeric(cans), na.rm = T),
+            glass_bottles = sum(as.numeric(glass_bottles), na.rm = T),
+            straws = sum(as.numeric(straws), na.rm = T),
+            utensils = sum(as.numeric(utensils), na.rm = T),
+            personal_hygiene = sum(as.numeric(personal_hygiene), na.rm = T),
+            clothing = sum(as.numeric(clothing), na.rm = T),
+            construction = sum(as.numeric(construction), na.rm = T),
+            fishing = sum(as.numeric(fishing), na.rm = T),
+            plastic_pieces = sum(as.numeric(plastic_pieces), na.rm = T),
+            paper = sum(as.numeric(paper), na.rm = T),
+            glass = sum(as.numeric(glass), na.rm = T),
+            foam = sum(as.numeric(foam), na.rm = T),
+            other = sum(as.numeric(other), na.rm = T),
+            syringes = sum(as.numeric(syringes), na.rm = T),
+            total = sum(as.numeric(total), na.rm = T))%>%
+  arrange(-total)
 ```
 Across Provinces (Ontario is only non-cigarette butt one)
 ```{r}
-AGF_2017_18 %>%
-  group_by(province) %>%
-  filter(!province %in% c("New Providence", "New York", NA)) %>%
-  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
-            tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
-            lighters = sum(as.numeric(lighters), na.rm = T),
-            paper_bags = sum(as.numeric(paper_bags), na.rm = T),
-            reusable_bags = sum(as.numeric(reusable_bags), na.rm = T),
-            food_wrappers = sum(as.numeric(food_wrappers), na.rm = T),
-            plastic_beverage_bottles = sum(as.numeric(plastic_beverage_bottles), na.rm = T),
-            plastic_bottle_caps = sum(as.numeric(plastic_bottle_caps), na.rm = T),
-            metal_bottle_caps = sum(as.numeric(metal_bottle_caps), na.rm = T),
-            cans = sum(as.numeric(cans), na.rm = T),
-            glass_bottles = sum(as.numeric(glass_bottles), na.rm = T),
-            straws = sum(as.numeric(straws), na.rm = T),
-            utensils = sum(as.numeric(utensils), na.rm = T),
-            personal_hygiene = sum(as.numeric(personal_hygiene), na.rm = T),
-            clothing = sum(as.numeric(clothing), na.rm = T),
-            construction = sum(as.numeric(construction), na.rm = T),
-            fishing = sum(as.numeric(fishing), na.rm = T),
-            plastic_pieces = sum(as.numeric(plastic_pieces), na.rm = T),
-            paper = sum(as.numeric(paper), na.rm = T),
-            glass = sum(as.numeric(glass), na.rm = T),
-            foam = sum(as.numeric(foam), na.rm = T),
-            other = sum(as.numeric(other), na.rm = T),
-            syringes = sum(as.numeric(syringes), na.rm = T),
-            total = sum(as.numeric(total), na.rm = T))
-# Ontario - picked up 387000 pieces of trash!
+
 ```
-```{r}
-AGF_2017_18 %>%
-  group_by(province) %>%
-  filter(!province %in% c("New Providence", "New York", NA)) %>%
-  summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
-            tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
-            lighters = sum(as.numeric(lighters), na.rm = T),
-            paper_bags = sum(as.numeric(paper_bags), na.rm = T),
-            reusable_bags = sum(as.numeric(reusable_bags), na.rm = T),
-            food_wrappers = sum(as.numeric(food_wrappers), na.rm = T),
-            plastic_beverage_bottles = sum(as.numeric(plastic_beverage_bottles), na.rm = T),
-            plastic_bottle_caps = sum(as.numeric(plastic_bottle_caps), na.rm = T),
-            metal_bottle_caps = sum(as.numeric(metal_bottle_caps), na.rm = T),
-            cans = sum(as.numeric(cans), na.rm = T),
-            glass_bottles = sum(as.numeric(glass_bottles), na.rm = T),
-            straws = sum(as.numeric(straws), na.rm = T),
-            utensils = sum(as.numeric(utensils), na.rm = T),
-            personal_hygiene = sum(as.numeric(personal_hygiene), na.rm = T),
-            clothing = sum(as.numeric(clothing), na.rm = T),
-            construction = sum(as.numeric(construction), na.rm = T),
-            fishing = sum(as.numeric(fishing), na.rm = T),
-            plastic_pieces = sum(as.numeric(plastic_pieces), na.rm = T),
-            paper = sum(as.numeric(paper), na.rm = T),
-            glass = sum(as.numeric(glass), na.rm = T),
-            foam = sum(as.numeric(foam), na.rm = T),
-            other = sum(as.numeric(other), na.rm = T),
-            syringes = sum(as.numeric(syringes), na.rm = T),
-            total = sum(as.numeric(total), na.rm = T))
-```
-
-```{r}
-# number of BUTTS
-AGF_2017_18 %>%
-  group_by(event) %>%
-  summarize(butts = sum(as.numeric(cigarette_butts)),
-            packs = sum(as.numeric(tobacco_packaging), na.rm = T)) %>%
-  arrange(-butts)
-
-
-
-# each province 
-
-
-AGF_2017_18 %>%
-  select(date, location, city, province, event, volunteers, cigarette_butts, total) %>%
-  arrange(desc(as.numeric(total))) %>%
-  View()
-```
-

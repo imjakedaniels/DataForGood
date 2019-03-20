@@ -332,7 +332,7 @@ p <- AGF_2014_19 %>%
   ggthemes::theme_fivethirtyeight() +
   labs(title = "A Greener Future - Event Timeline",
        colour = "Trash Collected") +
-  theme(legend.position = "none")
+  theme(axis.text.y = element_blank())
 
 library(plotly)
 q <- ggplotly(p, tooltip = c("y", "text", "colour"))

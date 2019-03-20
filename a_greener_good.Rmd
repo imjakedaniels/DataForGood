@@ -331,12 +331,13 @@ p <- AGF_2014_19 %>%
   facet_wrap(~year, scales = "free_y", ncol=1) +
   ggthemes::theme_fivethirtyeight() +
   labs(title = "A Greener Future - Event Timeline",
-       colour = "Trash Collected")
+       colour = "Trash Collected") +
+  theme(legend.position = "none")
 
 library(plotly)
 q <- ggplotly(p, tooltip = c("y", "text", "colour"))
 library(htmlwidgets)
-saveWidget(q, "event_timeline.html", selfcontained = F)
+saveWidget(q, "event_timeline.html", selfcontained = F, title = "AGF - Event Timeline")
 ```
 Across Provinces (Ontario is only non-cigarette butt one)
 ```{r}

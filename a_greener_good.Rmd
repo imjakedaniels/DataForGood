@@ -336,7 +336,7 @@ p <- AGF_2014_19 %>%
 library(plotly)
 q <- ggplotly(p, tooltip = c("y", "text", "colour"))
 library(htmlwidgets)
-saveWidget(q, "index.html", selfcontained = F)
+saveWidget(q, "event_timeline.html", selfcontained = F)
 ```
 Across Provinces (Ontario is only non-cigarette butt one)
 ```{r}

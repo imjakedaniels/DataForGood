@@ -5,44 +5,65 @@ output:
     df_print: paged
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
 ```{r, message=FALSE, warning = FALSE, error=FALSE}
 library(tidyverse)
 # loading in
+A_Greener_Future_Data_2014 <- read_csv("AGFDATA - 2014 - A Greener Future Data 20.csv")
+A_Greener_Future_Data_2015 <- read_csv("AGFDATA - 2015 - A Greener Future Data 20.csv")
+A_Greener_Future_Data_2016 <- read_csv("AGFDATA - 2016 - A Greener Future Data 20.csv")
 A_Greener_Future_Data_2017 <- read_csv("AGFDATA - 2017 - A Greener Future Data 20.csv")
 A_Greener_Future_Data_2018 <- read_csv("AGFDATA - 2018 - A Greener Future Data 20.csv")
+A_Greener_Future_Data_2019 <- read_csv("AGFDATA - 2019 - A Greener Future Data 20.csv")
+
 
 # fixing column names
+names(A_Greener_Future_Data_2014) <- A_Greener_Future_Data_2014[1,]
+A_Greener_Future_Data_2014 <-A_Greener_Future_Data_2014[-1,]
+
+names(A_Greener_Future_Data_2015) <- A_Greener_Future_Data_2015[1,]
+A_Greener_Future_Data_2015 <-A_Greener_Future_Data_2015[-1,]
+
+names(A_Greener_Future_Data_2016) <- A_Greener_Future_Data_2016[1,]
+A_Greener_Future_Data_2016 <-A_Greener_Future_Data_2016[-1,]
+
 names(A_Greener_Future_Data_2017) <- A_Greener_Future_Data_2017[1,]
 A_Greener_Future_Data_2017 <-A_Greener_Future_Data_2017[-1,]
 
 names(A_Greener_Future_Data_2018) <- A_Greener_Future_Data_2018[1,]
 A_Greener_Future_Data_2018 <-A_Greener_Future_Data_2018[-1,]
 
+names(A_Greener_Future_Data_2019) <- A_Greener_Future_Data_2019[1,]
+A_Greener_Future_Data_2019 <-A_Greener_Future_Data_2019[-1,]
+
 # binding
-AGF_2017_18 <- rbind(A_Greener_Future_Data_2017,A_Greener_Future_Data_2018)
+AGF_2014_19 <- rbind(A_Greener_Future_Data_2014, A_Greener_Future_Data_2015, A_Greener_Future_Data_2016, A_Greener_Future_Data_2017, A_Greener_Future_Data_2018, A_Greener_Future_Data_2019)
 
 library(lubridate)
 library(janitor)
 # converting column types into numeric, fixing names into snake_case, and parsing the date
-AGF_2017_18 <- AGF_2017_18 %>%
-  mutate_at(names(AGF_2017_18[,15:44]), as.numeric) %>%
+AGF_2014_19 <- AGF_2014_19 %>%
+  mutate_at(names(AGF_2014_19[,15:44]), as.numeric) %>%
   clean_names() %>%
   mutate(Date_full = parse_date(date, format = '%B %d, %Y'),
          Date_half = parse_date(date, format = '%b %d, %Y'),
          date = coalesce(Date_full, Date_half),
-         volunteers = as.numeric(volunteers)) %>%
+         volunteers = as.numeric(volunteers),
+         event = ifelse(event == "5 Pieces a Day", "5 Piece Challenge", event)
+) %>%
   drop_na(date) %>%
   select(-Date_full, -Date_half) 
+
+AGF_2014_19$latitude[AGF_2014_19$city == "Thunder Bay" & AGF_2014_19$date == "2018-05-05"] <- -89.194652
+
+AGF_2014_19$longitude[AGF_2014_19$city == "Thunder Bay" & AGF_2014_19$date == "2018-05-05"] <- 48.458982
+
+unique(AGF_2014_19$event)
 ```
 
 Weekdays for cig butts
 ```{r}
 # these could use groupings (ie. plastic, metal)
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   mutate(weekday = wday(date)) %>%
   group_by(weekday) %>%
   select(-longitude, -latitude,-location, -city, -province, -country, -photos, -sponsor, -coordinator, -volunteers, -strange_items) %>%
@@ -81,7 +102,7 @@ ggplot(aes(x=weekday, y=value, fill = item, group = weekday)) +
 Cumulative Charts 
 ```{r}
 # non cigarette butt collection over the summer 2016
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(date >= "2018-05-01" & date <= "2018-09-01") %>%
   arrange(date) %>%
     mutate(total = total - cigarette_butts,
@@ -91,7 +112,7 @@ AGF_2017_18 %>%
     scale_y_continuous(labels = scales::comma_format()) 
 
 # with cigarete butts (what an event they have eh)
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(date >= "2018-05-01" & date <= "2018-09-01") %>%
   arrange(date) %>%
     mutate(cumulative = cumsum(total)) %>%
@@ -102,33 +123,33 @@ AGF_2017_18 %>%
 
 Average metrics
 ```{r}
-saturdays <- AGF_2017_18 %>%
+saturdays <- AGF_2014_19 %>%
   mutate(weekday = wday(date),
          saturday = weekday == 7) %>%
   filter(saturday == T) 
 
 
-# avreage amount collected on saturdays over last 2 years ~5000
+# avreage amount collected on saturdays since inception - 7105
   saturdays %>%
-    summarize(weekly_average = sum(total)/104)
+    summarize(saturday_average = sum(total, na.rm=T)/(52*5 + as.numeric(today()-as.Date("2019-01-01")) %/% 7))
 
   
-# average amount collected daily over last 2 years ~900 pieces a day
-  AGF_2017_18 %>%
-    summarize(daily_avg = sum(total)/(365*2))
+# average amount collected daily since inception ~500 pieces a day
+  AGF_2014_19 %>%
+    summarize(daily_avg = sum(total, na.rm=T)/(365*5 + as.numeric(today()-as.Date("2019-01-01"))))
 
 ```
 
 Event Data of Ontario
 ```{r}
 # number of volunteers by event
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(event) %>%
-  summarize(total = sum(as.numeric(volunteers))) %>%
+  summarize(total = sum(as.numeric(volunteers), na.rm=T)) %>%
   arrange(-total)
 
 # Love Your Lake by city
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(event == "Love Your Lake") %>%
   group_by(city) %>%
   summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
@@ -157,7 +178,7 @@ AGF_2017_18 %>%
             total = sum(as.numeric(total), na.rm = T))
 
 # Butt blitz by city
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(event == "The Butt Blitz") %>%
   group_by(city) %>%
   summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T))
@@ -165,35 +186,35 @@ AGF_2017_18 %>%
 Provinces (Ontario)
 ```{r}
 # number of volunteers by province - over 1000 volunteers from ontario
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(province) %>%
-  summarize(total = sum(as.numeric(volunteers))) %>%
+  summarize(total = sum(as.numeric(volunteers), na.rm=T)) %>%
   arrange(-total)
 
 # number of trash picked up by province
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(province) %>%
   filter(!province %in% c("New Providence", "New York", NA)) %>%
   summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T)) %>%
   arrange(-cigarette_butts)
 
-## Cities in Ontario - 40 cities 
-AGF_2017_18 %>%
+## Cities in Ontario - 73 cities 
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   count(city)
 
-# 99 days over last 2 years
-AGF_2017_18 %>%
+# 331 days for events
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   count(date) %>%
   count(date) %>%
   summarize(total_days = sum(nn))
 
 # number of volunteers by city
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   group_by(city) %>%
-  summarize(volunteers = sum(volunteers)) %>%
+  summarize(volunteers = sum(volunteers, na.rm=T)) %>%
   arrange(-volunteers)
 ```
 wordclouds by Ontario & Canada-wide
@@ -201,35 +222,35 @@ wordclouds by Ontario & Canada-wide
 library(wordcloud2)
 
 # based on number of events
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   count(city) %>%
 wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
 
 # based on number of volunteers
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   group_by(city) %>%
-  summarize(volunteers = sum(volunteers)) %>%
-wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+  summarize(volunteers = sum(volunteers, na.rm=T)) %>%
+wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
 
 # based on total trash picked up
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   filter(province == "Ontario") %>%
   group_by(city) %>%
-  summarize(total = sum(total)) %>%
-wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+  summarize(total = sum(total, na.rm=T)) %>%
+wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
 
 # across canada total trash
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(city) %>%
-  summarize(total = sum(total)) %>%
-wordcloud2(size = 0.5, fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
+  summarize(total = sum(total, na.rm=T)) %>%
+wordcloud2(fontFamily = "Ubuntu", color = rep(c("222D4D", "B2C88B"),20), backgroundColor = "F2F2F2")
 ```
 
 ```{r}
 # looking at each city
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(city) %>%
   summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
             tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
@@ -258,7 +279,7 @@ AGF_2017_18 %>%
   arrange(-total)
 
 # by events
-AGF_2017_18 %>%
+AGF_2014_19 %>%
   group_by(event) %>%
   summarize(cigarette_butts = sum(as.numeric(cigarette_butts), na.rm = T),
             tobacco_packaging = sum(as.numeric(tobacco_packaging), na.rm = T),
@@ -286,7 +307,45 @@ AGF_2017_18 %>%
             total = sum(as.numeric(total), na.rm = T))%>%
   arrange(-total)
 ```
+
+```{r}
+events <- AGF_2014_19 %>%
+  count(event) %>%
+  ungroup() %>%
+  filter(n > 1, event != "NA", event != "N/A") 
+
+library(hrbrthemes)
+# working so far
+p <- AGF_2014_19 %>%
+  semi_join(events, by="event") %>%
+  mutate(year = year(date),
+         event_date = as.numeric(format(date, "%j"))) %>%
+  rename(trash_collected = total) %>%
+  filter(year > 2014 & year < 2019) %>%
+  filter(trash_collected > 0) %>%
+  mutate(event = fct_reorder(event, event_date, min)) %>%
+  ggplot(aes(x=event_date, y=event, colour = trash_collected, size = trash_collected, text = paste(paste0(city,","), date))) +
+  scale_color_gradient2(low = "yellow", midpoint = 1000, mid = "orange", high = "dark red", na.value = "grey50") +
+  geom_jitter(alpha = 0.7, shape = 21) +
+  scale_x_continuous(breaks = c(0,31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365), labels = c("Jan", "", "", "", "May", "", "", "", "Sept", "", "", "", "Dec")) +
+  facet_wrap(~year, scales = "free_y", ncol=1) +
+  ggthemes::theme_fivethirtyeight() +
+  labs(title = "A Greener Future - Event Timeline",
+       colour = "Trash Collected")
+
+library(plotly)
+q <- ggplotly(p, tooltip = c("y", "text", "colour"))
+library(htmlwidgets)
+saveWidget(q, "index.html", selfcontained = F)
+```
 Across Provinces (Ontario is only non-cigarette butt one)
 ```{r}
-
+write_csv(AGF_2014_19, "AGF_2014_19.csv")
+AGF_2014_19_long <- AGF_2014_19 %>%
+  select(-total) %>%
+  mutate(year = year(date)) %>%
+  gather(Type, Count, -id, -date, -year, -longitude, -latitude, -location, -city, -province, -country, -photos, -sponsor, -event, -coordinator, -volunteers, -strange_items)
+write_csv(AGF_2014_19, "AGF_2014_19_long.csv")
 ```
+
+

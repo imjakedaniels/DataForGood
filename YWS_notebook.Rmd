@@ -1,0 +1,171 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+```{r}
+library(tidyverse)
+library(lubridate)
+```
+# loading and renaming vars
+```{r}
+donations <- read_csv("donations.CSV")
+names(donations) <- c("unique_donation_id", "gf_date", "gf_amount", "donation_approach", "donation_designation", "gf_type", "unique_constituent_id")
+
+constituents <- read_csv("Constituents0416.CSV")
+names(constituents) <- c("unique_constituent_id", "key_indicator", "gender", "postal_code", "first_gift_amnt", "first_gift_date", "last_gift_amount", "last_gift_date", "largest_gift_amount", "largest_gift_date")
+
+volunteer <- read_csv("Volunteer.csv")
+names(volunteer) <- c("unique_constituent_id", "activity", "total_hours", "assignment_date")
+```
+
+# creating subsets for is_donar
+```{r}
+# is_donor targets
+(volunteers_who_are_donors <- donations %>%
+  inner_join(volunteer) %>%
+  count(unique_constituent_id))
+# 365/1022 volunteers have donated
+# ~33%
+(constituents_who_are_donors <- donations %>%
+  inner_join(constituents) %>%
+  count(unique_constituent_id))
+# 8368 / 10405 constituents donated
+# ~80%
+```
+
+# creating long_term donors (more than 5 donations)
+```{r}
+(termed_volunteer_donors <- donations %>%
+  inner_join(volunteer) %>%
+  count(unique_constituent_id) %>%
+  filter(n>=5))
+# 216/365 of volunteers who have donated are "long_term"
+# ~60%
+
+(termed_constituent_donors <- donations %>%
+  inner_join(constituents) %>%
+  count(unique_constituent_id) %>%
+  filter(n>=5))
+# 1290 / 8371 of constiuents who have donated are "long_term"
+# ~15%
+
+# volunteers are likelier to be long-term compared to regular constituents
+```
+# cleaning and creating target vars
+```{r}
+# need to remove specific events so volunteers can join without making multiple unique_donation_ids... so I summed up total hours and number of events
+unique_volunteer_set <- volunteer %>%
+  select(-activity, -assignment_date) %>%
+  group_by(unique_constituent_id) %>%
+  mutate(total_hours = sum(total_hours),
+         volunteer_events = as.numeric(n())) %>%
+  rename(volunteer_hours = total_hours) %>%
+  ungroup() %>%
+  unique()
+```
+
+# joining
+```{r}
+constituents_target <- constituents %>%
+  left_join(donations) %>%
+  left_join(unique_volunteer_set) %>%
+  
+# cleaning var-types and extracting numerics
+  mutate(gf_date = mdy(gf_date),
+         
+         gf_amount = as.numeric(str_extract(gf_amount, "[0-9]+\\.[0-9]+")),
+         
+         first_gift_amnt = as.numeric(str_extract(first_gift_amnt, "[0-9]+\\.[0-9]+")),
+         
+         first_gift_date = mdy(first_gift_date),
+         
+         largest_gift_amount = as.numeric(str_extract(largest_gift_amount, "[0-9]+\\.[0-9]+")),
+         
+         largest_gift_date = mdy(largest_gift_date),
+         
+         last_gift_amount = as.numeric(str_extract(last_gift_amount, "[0-9]+\\.[0-9]+")),
+         
+         last_gift_date = mdy(last_gift_date),
+         
+         FSA = str_extract(postal_code, "^[A-Za-z][0-9][A-Za-z]"),
+         
+         key_indicator = case_when(
+           key_indicator == "I" ~ "Individual",
+           key_indicator == "O" ~ "Organization"
+         )) %>%
+
+# target vars
+  mutate(
+         is_volunteer = ifelse(unique_constituent_id %in% volunteer$unique_constituent_id, 1, 0),
+         
+         is_constituent = ifelse(unique_constituent_id %in% constituents$unique_constituent_id, 1, 0),
+        
+         is_donor = ifelse(unique_constituent_id %in% volunteers_who_are_donors$unique_constituent_id | unique_constituent_id %in% constituents_who_are_donors$unique_constituent_id, 1, 0),
+    
+         volunteer_events = case_when(
+           is.na(volunteer_events) ~ 0,
+           TRUE ~ volunteer_events),
+         
+         volunteer_hours = case_when(
+           is.na(volunteer_hours) ~ 0,
+           TRUE ~ volunteer_hours),
+         
+         donation_designation = case_when(
+           str_detect(donation_designation, "^GIK") ~ "Gifts in Kind",
+           TRUE ~ donation_designation)) %>%
+  mutate(donation_designation = fct_lump(donation_designation, 3)) %>%
+  select(-postal_code)
+  
+# this dataset is missing the event type and hours per event each volunteer so it can join correctly. it is replaced by total events and total hours.
+
+write_csv(constituents_target, "full_set_with_targets.csv")
+```
+
+```{r}
+updates <- read_csv("~/DataForGood_Yes/full_set_with_targets.csv")
+
+# creating times donated --- LOOK AT REMOVING SINGLE TIME DONORS FROM SET
+times_donated <- updates %>%
+  group_by(unique_constituent_id) %>%
+  count() %>%
+  rename(times_donated = n)
+
+# creating average donation
+avg_donation <- updates %>%
+  rename(donor_since = first_gift_amnt) %>%
+  group_by(unique_constituent_id) %>%
+  summarize(avg_donation = round(mean(gf_amount),2))
+
+updates <- updates %>%
+  group_by(unique_constituent_id) %>%
+  mutate(length_of_donor_relationship = max(gf_date) - min(gf_date)) %>% 
+  ungroup() %>%
+  inner_join(times_donated) %>%
+  inner_join(avg_donation) %>%
+  rename(donor_since = first_gift_date) %>%
+  mutate(donor_since = year(donor_since)) %>%
+  select(-donated_5_times)
+
+
+# 
+final <- updates %>%
+  select(-unique_donation_id, -gf_date, -gf_amount, -donation_approach, -donation_designation, -gf_type, -largest_gift_date, -is_donor, - is_constituent) %>%
+    unique()%>%
+  filter(times_donated > 1) %>% mutate(churned = ifelse(last_gift_date < as.Date("2018-01-01"), 1, 0)) %>% select(-unique_constituent_id, -last_gift_date)
+
+final
+model <- glm(data = final %>% select(-volunteer_events, -volunteer_hours), is_volunteer ~ ., family = "binomial")
+library(broom)
+
+
+
+lm(times_donated ~ ., data = final %>% select(-FSA)) %>% tidy %>% filter(p.value < 0.05)
+
+lm(volunteer_hours ~ ., data = final %>% select(-FSA)) %>% tidy %>% filter(p.value < 0.05)
+
+
+
+tidy(model) %>% filter(!str_detect(term, "^FSA"), p.value < 0.05)
+
+```
+

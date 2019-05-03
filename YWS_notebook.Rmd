@@ -53,6 +53,25 @@ names(volunteer) <- c("unique_constituent_id", "activity", "total_hours", "assig
 ```
 # cleaning and creating target vars
 ```{r}
+unique_volunteer_set <- volunteer %>%
+  mutate(volunteer_date = mdy_hms(assignment_date)) %>%
+  group_by(unique_constituent_id) %>%
+  mutate(date_became_volunteer = min(volunteer_date),
+         total_hours = sum(total_hours),
+         volunteer_events = as.numeric(n())) %>%
+  rename(volunteer_hours = total_hours) %>%
+  left_join(donations %>% mutate(gf_date = mdy(gf_date))) %>%
+  select(unique_constituent_id, date_became_volunteer, gf_date, gf_amount, volunteer_events, volunteer_hours) %>%
+  group_by(unique_constituent_id) %>%
+  mutate(gf_date = min(gf_date)) %>%
+  mutate(days_since_volunteering = gf_date - ymd(date_became_volunteer),
+         is_volunteer_before_donating = ifelse(days_since_volunteering > 0 , 1 , 0),
+         date_became_volunteer = ymd(date_became_volunteer)) %>%
+  ungroup() %>%
+  select(-gf_amount, - gf_date, -days_since_volunteering) %>%
+  mutate(is_volunteer_before_donating = ifelse(is.na(is_volunteer_before_donating), 0, is_volunteer_before_donating)) %>%
+  unique()
+
 # need to remove specific events so volunteers can join without making multiple unique_donation_ids... so I summed up total hours and number of events
 unique_volunteer_set <- volunteer %>%
   select(-activity, -assignment_date) %>%
@@ -72,18 +91,18 @@ constituents_target <- constituents %>%
   
 # cleaning var-types and extracting numerics
   mutate(gf_date = mdy(gf_date),
+        
+         gf_amount = as.numeric(str_remove_all(gf_amount, "[$,]")),
          
-         gf_amount = as.numeric(str_extract(gf_amount, "[0-9]+\\.[0-9]+")),
-         
-         first_gift_amnt = as.numeric(str_extract(first_gift_amnt, "[0-9]+\\.[0-9]+")),
+         first_gift_amnt = as.numeric(str_remove_all(first_gift_amnt, "[$,]")),
          
          first_gift_date = mdy(first_gift_date),
          
-         largest_gift_amount = as.numeric(str_extract(largest_gift_amount, "[0-9]+\\.[0-9]+")),
+         largest_gift_amount = as.numeric(str_remove_all(largest_gift_amount, "[$,]")),
          
          largest_gift_date = mdy(largest_gift_date),
          
-         last_gift_amount = as.numeric(str_extract(last_gift_amount, "[0-9]+\\.[0-9]+")),
+         last_gift_amount = as.numeric(str_remove_all(last_gift_amount, "[$,]")),
          
          last_gift_date = mdy(last_gift_date),
          
@@ -108,14 +127,16 @@ constituents_target <- constituents %>%
          
          volunteer_hours = case_when(
            is.na(volunteer_hours) ~ 0,
-           TRUE ~ volunteer_hours),
-         
-         donation_designation = case_when(
+           TRUE ~ volunteer_hours)) %>%
+  select(-postal_code, -gender)
+  
+
+######  
+  donation_designation = case_when(
            str_detect(donation_designation, "^GIK") ~ "Gifts in Kind",
            TRUE ~ donation_designation)) %>%
-  mutate(donation_designation = fct_lump(donation_designation, 3)) %>%
-  select(-postal_code)
-  
+  mutate(donation_designation = fct_lump(donation_designation, 3))
+
 # this dataset is missing the event type and hours per event each volunteer so it can join correctly. it is replaced by total events and total hours.
 
 write_csv(constituents_target, "full_set_with_targets.csv")
@@ -143,18 +164,16 @@ updates <- updates %>%
   inner_join(times_donated) %>%
   inner_join(avg_donation) %>%
   rename(donor_since = first_gift_date) %>%
-  mutate(donor_since = year(donor_since)) %>%
-  select(-donated_5_times)
+  mutate(donor_since = year(donor_since)) 
 
 
 # 
 final <- updates %>%
-  select(-unique_donation_id, -gf_date, -gf_amount, -donation_approach, -donation_designation, -gf_type, -largest_gift_date, -is_donor, - is_constituent) %>%
-    unique()%>%
-  filter(times_donated > 1) %>% mutate(churned = ifelse(last_gift_date < as.Date("2018-01-01"), 1, 0)) %>% select(-unique_constituent_id, -last_gift_date)
+  select(-unique_donation_id, -gf_date, -gf_amount, -largest_gift_amount, -donation_approach, -donation_designation, -gf_type, -largest_gift_date, -is_donor, - is_constituent) %>%
+    unique() %>% mutate(churned = ifelse(last_gift_date < as.Date("2018-01-01"), 1, 0), last_gift_date = year(last_gift_date))
 
 final
-model <- glm(data = final %>% select(-volunteer_events, -volunteer_hours), is_volunteer ~ ., family = "binomial")
+model <- glm(data = final %>% select(-volunteer_events, -unique_constituent_id, -volunteer_hours, -FSA, -became_volunteer, -volunteer_before_donating), is_volunteer ~ ., family = "binomial")
 library(broom)
 
 
@@ -167,5 +186,173 @@ lm(volunteer_hours ~ ., data = final %>% select(-FSA)) %>% tidy %>% filter(p.val
 
 tidy(model) %>% filter(!str_detect(term, "^FSA"), p.value < 0.05)
 
+# see influences!
+model %>%
+  tidy() %>%
+  filter(term != "(Intercept)") %>%
+  mutate(term = reorder(term, estimate)) %>%
+  ggplot(aes(x=estimate, y= term)) +
+  geom_point()
+
+# show the break of positive negative
+model %>%
+  tidy() %>%
+  mutate(term = reorder(term, estimate)) %>%
+  ggplot(aes(x=estimate, y= term)) +
+  geom_point() +
+  geom_vline(xintercept = 0, color = "red", lty = 2)
+```
+
+```{r}
+library(survival)
+
+
+dolphin_survival <- final %>%
+  mutate(churnYear = ifelse(churned == 1, last_gift_date, first_gift_date),
+         age = churnYear - first_gift_date) %>%
+  filter(churnYear >= first_gift_date) %>%
+  select(age, churned, is_volunteer) 
+
+
+# require some data prep USING YEARS
+dolphin_survival <- final %>%
+  mutate(churnYear = ifelse(churned == 1, last_gift_date, first_gift_date),
+         age = churnYear - first_gift_date) %>%
+  filter(!is.na(churnYear)) %>%
+  select(first_gift_date, churnYear, age, churned, is_volunteer, times_donated) %>%
+  filter(churnYear >= first_gift_date)
+
+model <- survfit(Surv(age, churned) ~ 1, dolphin_survival)
+model
+
+library(broom)
+
+tidy(model) %>%
+  ggplot(aes(x=time, y=estimate)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=conf.low, ymax = conf.high), alpha=.2) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(y = "Estimated % of Survival",
+       x = "Time (in years)") +
+  labs(title = "Donor Survival Analysis",
+       subtitle = "Median life expectancy is 6 years")
+
+survfit(Surv(age, churned) ~ 1, dolphin_survival)
+
+```
+
+```{r}
+model <- survfit(Surv(age, churned) ~ is_volunteer, dolphin_survival)
+
+tidy(model) %>%
+  ggplot(aes(x=time, y=estimate, colour = strata)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=conf.low, ymax = conf.high), alpha=.2) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(y = "Estimated % of Survival")
+
+survfit(Surv(age, churned) ~ is_volunteer, dolphin_survival)
+
+# seems close, is there a significant difference?
+coxph(Surv(age, churned) ~ is_volunteer, dolphin_survival)
+
+
+coxph(Surv(age, churned) ~ is_volunteer, dolphin_survival) %>%
+  tidy()
+```
+
+
+
+
+```{r}
+library(caret)
+set.seed(825)
+
+
+# preProc = c("center", "scale")
+
+# data split 75% train - 25% validate
+index_train <- sample(1:nrow(final), 3/4 * nrow(final))
+training <- final[index_train, ]
+validation <- final[-index_train, ]
+
+fitControl <- trainControl(## 10-fold CV
+                           method = "repeatedcv",
+                           number = 10,
+                           ## repeated ten times
+                           repeats = 10)
+
+gbmGrid <-  expand.grid(interaction.depth = c(1, 5, 9), 
+                        n.trees = (1:30)*50, 
+                        shrinkage = 0.1,
+                        n.minobsinnode = 20)
+
+
+
+gbmFit1 <- train(churned ~ ., data = training %>% select(-volunteer_before_donating, -became_volunteer), 
+                 method = "gbm", 
+                 trControl = fitControl,
+                 ## This last option is actually one
+                 ## for gbm() that passes through
+                 verbose = FALSE,
+                 tuneGrid = gbmGrid)
+
+gbmFit1
+
+gbmFit1_pred <- predict(gbmFit1, newdata=validation,  type = "prob")
+  gbmFit1_pred_cutoff_50 <- ifelse( gbmFit1_pred[,2] > 0.5, 1,0)
+  fit.gbm_conf_matrix_50 <- table(validation$churned, gbmFit1_pred_cutoff_50) %>% confusionMatrix()
+fit.gbm_conf_matrix_50
+
+
+fitControl3 <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           ## Estimate class probabilities
+                           classProbs = TRUE,
+                           ## Evaluate performance using 
+                           ## the following function
+                           summaryFunction = twoClassSummary)
+
+set.seed(825)
+gbmFit3 <- train(Class ~ ., data = training, 
+                 method = "gbm", 
+                 trControl = fitControl3, 
+                 verbose = FALSE, 
+                 tuneGrid = gbmGrid,
+                 ## Specify which metric to optimize
+                 metric = "ROC")
+gbmFit3
+
+gbmFit3_pred <- predict(gbmFit3, newdata=validation,  type = "prob")
+  gbmFit3_pred_cutoff_50 <- ifelse( gbmFit3_pred[,2] > 0.5, 1,0)
+  fit.gbm3_conf_matrix_50 <- table(validation$churned, gbmFit3_pred_cutoff_50) %>% confusionMatrix()
+fit.gbm3_conf_matrix_50
+
+```
+
+```{r}
+set.seed(825)
+svmFit <- train(cjirmed ~ ., data = training, 
+                 method = "svmRadial", 
+                 trControl = fitControl, 
+                 preProc = c("center", "scale"),
+                 tuneLength = 8,
+                 metric = "ROC")
+svmFit   
+
+rdaFit <- train(Class ~ ., data = training, 
+                 method = "rda", 
+                 trControl = fitControl, 
+                 tuneLength = 4,
+                 metric = "ROC")
+rdaFit      
+
+
+
+resamps <- resamples(list(GBM = gbmFit3,
+                          SVM = svmFit,
+                          RDA = rdaFit))
+summary(resamps)
 ```
 
